@@ -22,7 +22,7 @@ namespace caffe {
 #ifndef CPU_ONLY
 #ifdef USE_GREENTEA
 
-// #define dbg
+#define dbg
 #ifdef dbg
 #define dbgPrint(x) (x)
 #else
@@ -753,7 +753,12 @@ cl_int ConvolutionLayerSpatial<float>::convolve_hybrid(
       const float* input = input_cpu + image_offset;
       const float* weights = weights_cpu + kernel_h_ * kernel_w_
           * (channels_ / group_) * M_ * g;
-
+      caffe::Timer Totaltimer;
+      Totaltimer.initted();
+      Totaltimer.Start();
+      caffe::Timer timer;
+      timer.initted();
+      timer.Start();
       if (config->use_null_local) {
         err = clEnqueueNDRangeKernel(ctx.get_queue().handle().get(),
                                      kernel.handle().get(), 3,
@@ -768,6 +773,10 @@ cl_int ConvolutionLayerSpatial<float>::convolve_hybrid(
                                      config->local_work_size, 0, NULL,
                                      NULL);
       }
+      timer.Stop();
+      float enqueueTime = timer.MilliSeconds();
+      timer.initted();
+      timer.Start();
       forward_cpu_conv(input, col_buff.get(), weights,
                        output_cpu.get(),
                        bias,
@@ -782,12 +791,20 @@ cl_int ConvolutionLayerSpatial<float>::convolve_hybrid(
                        pad_h_, pad_w_,
                        stride_h_, stride_w_,
                        (int_tp)1, (int_tp)1);
+      timer.Stop();
+      float cpuTime = timer.MilliSeconds();
 
       viennacl::backend::finish();
       greentea_copy<float>(hybrid_offset*output_w_ * output_h_ ,
                            output_cpu.get(), (cl_mem) top_data,
                            n * this->top_dim_ + output_w_ * output_h_ * M_ * g,
                            &ctx);
+
+      Totaltimer.Stop();
+      float totalelapsedTime = Totaltimer.MilliSeconds();
+      std::cout<<"enqueue time: "<<enqueueTime<<"ms"<<std::endl;
+      std::cout<<"cpu time: "<<cpuTime<<"ms"<<std::endl;
+      std::cout<<"total conv time: "<<totalelapsedTime<<"ms"<<std::endl;
 
       if (err != CL_SUCCESS) {
         return err;
